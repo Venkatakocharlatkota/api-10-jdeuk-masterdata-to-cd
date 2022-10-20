@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="ItemMasterFlow" doc:id="b38e0d04-8c2a-4b99-bdce-a3391ea09229" >
+		<logger level="INFO" doc:name="Logger" doc:id="1c2d77e4-322f-46e9-bc20-7a3e6b106022" message="+++ Item Master Data received for processing to API-2 ,Line number - #[vars.vAssociatedProducts.contract_line_number] +++" />
+		<ee:transform doc:name="Transformation of  Item E1 Data to CD Fields" doc:id="d9058bca-38da-4546-a2bb-4ed38933d461">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="buisObj"><![CDATA[%dw 2.0
+output application/java
+---
+"ItemMaster"]]></ee:set-variable>
+				<ee:set-variable variableName="sequence_num"><![CDATA[%dw 2.0
+output application/json
+---
+payload.SequenceNumber]]></ee:set-variable>
+				<ee:set-variable variableName="contract_id"><![CDATA[payload.ContractNumber]]></ee:set-variable>
+				<ee:set-variable variableName="lineNumber"><![CDATA[payload.LineNumber]]></ee:set-variable>
+				<ee:set-variable variableName="item_number" ><![CDATA[payload.ItemNumber]]></ee:set-variable>
+				<ee:set-variable variableName="request_id" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.SequenceNumber]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="1523e290-ac14-4795-b804-ee8d06adc01f" >
+			<when expression='#[!(payload.LastStatus == "980" or payload.LastStatus == "526" or payload.LastStatus == "534")]'>
+				<logger level="INFO" doc:name="Logger" doc:id="3d73b86b-677e-4398-b589-4d6ee43aae20" message="+++ Other than Last status 980 , 526 ,534 +++"/>
+				<choice doc:name="Choice" doc:id="2f547665-563f-4ac2-bd46-49ea2c84e58e">
+			
+			<when expression='#[(payload.ItemNumber == "RMX ENP" or payload.ItemNumber == "RMX ENC") and isEmpty(payload.ProductDescription)]'>
+						<logger level="INFO" doc:name="Logger" doc:id="97e6ecfe-2df7-4cb2-93ae-8928cfe0ffcd" message='#[payload] +++"Itemnumber of data received with "RMX ENC" or "RMX ENP" without of the Product Description"+++' />
+						<logger level="INFO" doc:name="Item master details" doc:id="bca622f1-c6ce-4644-9085-8a363c236376" message="+++  #[payload]  external id -  #[vars.external_id] , Line Number -#[vars.lineNumber]+++" />
+						<raise-error doc:name="Raise error" doc:id="c0b647da-d241-4ad5-919e-ed10f874636e" type="ITEMPRODUCTDESCRIPTION:INVALIDORNULL" description="ITEM RECEIVED WITH RMX ENC OR RMX ENP . FAILED DUE TO PRODUCT DESCRIPTION  IS EMPTY" />
+					</when>
+					<when expression='#[(payload.ItemNumber == "RMX ENP") or (payload.ItemNumber == "RMX ENC")]'>
+				<logger level="INFO" doc:name="Logger" doc:id="0691adc1-545c-4eae-a966-7a1fd7844fd2" message="+++ Item data received with ItemNumber RMX ENP or  RMX ENC+++" />
+				<set-variable value="#[%dw 2.0
+&#10;import * from dw::Runtime
+&#10;output application/json 
+&#10;---
+&#10;(if(isEmpty(payload.ProductDescription)) fail(&quot;ERROR:'ProductDescription cannot be empty for Item master &quot; default &quot;&quot;) else if(isEmpty(payload.CustomerMixReference)) upper(payload.ProductDescription) replace /[^a-z0-9A-Z]/ with &quot;&quot; else upper(payload.CustomerMixReference ++ payload.ProductDescription) replace /[^a-z0-9A-Z]/ with &quot;&quot;)]" doc:name="upperProductDesc" doc:id="a8ee73f4-ec52-4ec6-b2e8-08440e9e8050" variableName="upperProductDesc" />
+				<ee:transform doc:name="Payload for RMX ENP or ENC" doc:id="cf606cea-3742-4c10-adae-5c08f3176754">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/json 
+
+//var upperProductDesc = (if(isEmpty(payload.CustomerMixReference)) upper(payload.ProductDescription) replace ' ' with '' else upper(payload.ProductDescription ++ payload.CustomerMixReference) replace ' ' with '')  replace '/' with ''
+//var upperProductDesc = (if(isEmpty(payload.CustomerMixReference)) upper(payload.ProductDescription) replace /[^a-z0-9A-Z]/ with "" else upper(payload.CustomerMixReference ++ payload.ProductDescription) replace /[^a-z0-9A-Z]/ with "")
+
+//var upperProductDesc = (if(isEmpty(payload.ProductDescription)) fail("ERROR:'ProductDescription cannot be empty for Item master " default "")        else if(isEmpty(payload.CustomerMixReference)) upper(payload.ProductDescription) replace /[^a-z0-9A-Z]/ with "" else upper(payload.CustomerMixReference ++ payload.ProductDescription) replace /[^a-z0-9A-Z]/ with "") 
+//var specialItem =      (if(isEmpty(payload.ItemNumber))         fail("ERROR:'ItemNumber of SpecialItem cannot be empty for Item master " default "") else if(isEmpty(payload.CustomerMixReference)) (trim(payload.ItemNumber) replace /[^-a-z0-9A-Z]/ with "_")      else ((payload.CustomerMixReference) replace /[^a-z0-9A-Z]/ with "") ++ (trim(payload.ItemNumber) replace /[^-a-z0-9A-Z]/ with "_"))
+---
+{
+"latest_message_identifier":vars.messageIdentifier,
+//"external_id" :if((payload.ItemNumber == "RMX ENP") or (payload.ItemNumber == "RMX ENC"))(Crypto::MD5(upperProductDesc as Binary)) else (payload.ItemNumber),
+//"external_id" :if((payload.ItemNumber == "RMX ENP") or (payload.ItemNumber == "RMX ENC"))(upperProductDesc) else (payload.ItemNumber replace /[^-a-z0-9A-Z]/ with "_"),
+
+"external_id" : if((payload.ItemNumber == "null") or (payload.ItemNumber == null)) fail("ERROR:'Item number cannot be empty for Item master " default "") else vars.upperProductDesc ,
+
+//"external_id" :if((payload.ItemNumber == "RMX ENP") or (payload.ItemNumber == "RMX ENC"))(upperProductDesc) else (specialItem),
+
+"external_plant_ids" :[ payload.WorksCode] ,
+"type": p('itemType'),
+"description": payload.ProductDescription ,
+"uom" : p('unitOfMeasurement'),
+"status" : "ACTIVE" ,
+"cement_type" : payload.CementType ,
+"unit_price": payload.UnitPrice,
+
+
+//"X-Message-Identifier" : payload.Contracts.Contract.SequenceNumber,
+//"itemId" : if(isEmpty(payload.Contracts.Contract.ItemNumber)) fail("ERROR: Mandatory field: 'Item Id' cannot be empty") else (payload.Contracts.Contract.ItemNumber)
+//"default_slump": "payload.Contracts.Contract.CementType",
+}
+	]]></ee:set-payload>
+			</ee:message>
+					<ee:variables />
+		</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="f93c1be2-db5d-4125-9e73-cfdc5ddb4ca5" message="+++ Transformed Item Master - #[payload], Item number-  #[vars.item_number]  , Line Number -#[vars.lineNumber] , System Identifier is #[Mule::p('systemIdentifier')], Message Identifier is #[vars.messageIdentifier], Request_Id - #[vars.request_id],Contract - #[vars.contract_id]  +++" />
+				<flow-ref doc:name="Flow Reference" doc:id="6e23cc28-a4f8-4dbc-8e14-e933aafc455b" name="RequestFlow" />
+			
+</when>
+					<otherwise>
+				<logger level="INFO" doc:name="Logger" doc:id="ae4169cb-46bb-430f-90f8-121c64f3ab31" message="+++ Item data received with OTHER THAN the ItemNumber RMX ENP or  RMX ENC+++" />
+				<set-variable value="#[%dw 2.0&#10;import * from dw::Runtime&#10;output application/json &#10;---&#10;(if(isEmpty(payload.ItemNumber))  fail(&quot;ERROR:'ItemNumber of SpecialItem cannot be empty for Item master &quot; ) else if(isEmpty(payload.CustomerMixReference)) (trim(payload.ItemNumber) replace /[^-a-z0-9A-Z]/ with &quot;_&quot;)      else ((payload.CustomerMixReference) replace /[^a-z0-9A-Z]/ with &quot;&quot;) ++ (trim(payload.ItemNumber) replace /[^-a-z0-9A-Z]/ with &quot;_&quot;))]" doc:name="specialItem" doc:id="c5a25411-a2de-45ad-a524-cfe511eb1edf" variableName="specialItem" />
+				<ee:transform doc:name='Other than "RMX"' doc:id="87b021cc-093b-42b7-a00f-4066848e73a6">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/json 
+
+//var upperProductDesc = (if(isEmpty(payload.CustomerMixReference)) upper(payload.ProductDescription) replace ' ' with '' else upper(payload.ProductDescription ++ payload.CustomerMixReference) replace ' ' with '')  replace '/' with ''
+//var upperProductDesc = (if(isEmpty(payload.CustomerMixReference)) upper(payload.ProductDescription) replace /[^a-z0-9A-Z]/ with "" else upper(payload.CustomerMixReference ++ payload.ProductDescription) replace /[^a-z0-9A-Z]/ with "")
+
+//var upperProductDesc = (if(isEmpty(payload.ProductDescription)) fail("ERROR:'ProductDescription cannot be empty for Item master " default "")        else if(isEmpty(payload.CustomerMixReference)) upper(payload.ProductDescription) replace /[^a-z0-9A-Z]/ with "" else upper(payload.CustomerMixReference ++ payload.ProductDescription) replace /[^a-z0-9A-Z]/ with "") 
+//var specialItem =      (if(isEmpty(payload.ItemNumber))         fail("ERROR:'ItemNumber of SpecialItem cannot be empty for Item master " default "") else if(isEmpty(payload.CustomerMixReference)) (trim(payload.ItemNumber) replace /[^-a-z0-9A-Z]/ with "_")      else ((payload.CustomerMixReference) replace /[^a-z0-9A-Z]/ with "") ++ (trim(payload.ItemNumber) replace /[^-a-z0-9A-Z]/ with "_"))
+---
+{
+"latest_message_identifier":vars.messageIdentifier,
+//"external_id" :if((payload.ItemNumber == "RMX ENP") or (payload.ItemNumber == "RMX ENC"))(Crypto::MD5(upperProductDesc as Binary)) else (payload.ItemNumber),
+//"external_id" :if((payload.ItemNumber == "RMX ENP") or (payload.ItemNumber == "RMX ENC"))(upperProductDesc) else (payload.ItemNumber replace /[^-a-z0-9A-Z]/ with "_"),
+
+"external_id" : if((payload.ItemNumber == "null") or (payload.ItemNumber == null)) fail("ERROR:'Item number cannot be empty for Item master ") else vars.specialItem ,
+
+//"external_id" :if((payload.ItemNumber == "RMX ENP") or (payload.ItemNumber == "RMX ENC"))(upperProductDesc) else (specialItem),
+
+"external_plant_ids" :[ payload.WorksCode] ,
+"type": p('itemType'),
+"description": payload.ProductDescription ,
+"uom" : p('unitOfMeasurement'),
+"status" : "ACTIVE" ,
+"cement_type" : payload.CementType ,
+"unit_price": payload.UnitPrice,
+
+}
+	]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="769d7ecd-9210-44a6-84a3-75bfaebb532d" message="+++ Transformed Item Master other than RMX - #[payload], Item number-  #[vars.item_number]  , Line Number -#[vars.lineNumber] , System Identifier is #[Mule::p('systemIdentifier')], Message Identifier is #[vars.messageIdentifier], Request_Id - #[vars.request_id],Contract - #[vars.contract_id]  +++" />
+				<flow-ref doc:name="Flow Reference" doc:id="9b380931-0916-4220-a41e-74ce403bc039" name="RequestFlow" />
+			</otherwise>
+		</choice>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="Logger" doc:id="85484048-b190-4594-a760-ec9e51fde6d6" message='+++Item master details with LastStatus  "980" or "526" or "534" are ignored +++' />
+				<logger level="INFO" doc:name="Logger" doc:id="b8a770e5-97f3-40ab-8d37-2e01cb073373" message="+++ IGORNED Item Master - #[payload], Item number-  #[vars.item_number]  , Line Number -#[vars.lineNumber] , System Identifier is #[Mule::p('systemIdentifier')], Message Identifier is #[vars.messageIdentifier], Request_Id - #[vars.request_id],Contract - #[vars.contract_id]  +++" />
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="" doc:id="41a16433-cf5b-48b5-95be-d96bad7fa5a7" message="#[payload]"/>
+		<logger level="INFO" doc:name="Logger" doc:id="776e046b-7c46-4d33-a073-aed0d4a5e01e" message="+++ Item Master Data successfully submitted to API-2 +++" />
+		
+	</flow>
+</mule>

@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<flow name="jdeuk-jobsitedata-to-cd" doc:id="d254c352-f78f-496f-b221-7c568d37c593" >
+		<logger level="INFO" doc:name="Logger" doc:id="230f1bce-a361-4328-9db6-082740baa68f" message="+++ Jobsite Master Data received for processing to API-2 +++" />
+		<ee:transform doc:name="Setup Variables" doc:id="08d26702-6c99-421a-9761-fd9db27e9af9" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="buisObj" ><![CDATA[%dw 2.0
+output application/java
+---
+"JobsiteMaster"
+ ]]></ee:set-variable>
+				<ee:set-variable variableName="sequence_num" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.vHeaderContract.SequenceNumber]]></ee:set-variable>
+				<ee:set-variable variableName="request_id" ><![CDATA[%dw 2.0
+output application/java
+---
+vars.vHeaderContract.SequenceNumber]]></ee:set-variable>
+				<ee:set-variable variableName="external_id" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.vHeaderContract.ContractNumber]]></ee:set-variable>
+				<ee:set-variable variableName="lineNumber" ><![CDATA[output application/json
+---
+vars.vHeaderContract.LineNumber]]></ee:set-variable>
+				
+			
+</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Merge of E1 emails to single email into CD" doc:id="706d2419-e170-4b12-983b-bddeb747dff1">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="email_id"><![CDATA[%dw 2.0
+output application/json skipNullOn = "everywhere"
+
+var email1 = vars.vHeaderContract.EpodEmailAddress1
+var email2 = vars.vHeaderContract.EpodEmailAddress2
+var email3 = vars.vHeaderContract.EpodEmailAddress3
+var email4 = vars.vHeaderContract.EpodEmailAddress4
+var email5 = vars.vHeaderContract.EpodEmailAddress5
+var email6 = vars.vHeaderContract.EpodEmailAddress6
+
+var emails = [email1 ,email2 , email3 ,email4 , email5 , email6] distinctBy $
+
+---
+emails 
+
+]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transformation of  Jobsite E1 Data to CD Fields" doc:id="bd10429e-2660-430a-9520-38d2147ee83a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/json 
+
+//var lat = vars.vHeaderContract.SiteLocation replace  /[^-a-z0-9A-Z,.]/ with ""
+//var lon = vars.vHeaderContract.SiteLocation replace  /[^-a-z0-9A-Z,.]/ with ""
+
+//var countrycode =if(vars.vHeaderContract.Country !=null) vars.vHeaderContract.Country else "United Kingdom"
+//var vLine1 =if(vars.vHeaderContract.DocumentType == "C3") vars.vHeaderContract.CustomerName else vars.vHeaderContract.ProjectName
+//var vName =if(vars.vHeaderContract.DocumentType == "C3") vars.vHeaderContract.CustomerName else vars.vHeaderContract.ProjectName,
+var vName =if (isEmpty(vars.vHeaderContract.CustomerName) and isEmpty(vars.vHeaderContract.ProjectName)) vars.vHeaderContract.AddressLine1 else if(vars.vHeaderContract.DocumentType == "C3") vars.vHeaderContract.CustomerName else vars.vHeaderContract.ProjectName
+---
+{
+  external_id: if(isEmpty(vars.vHeaderContract.ContractNumber)) fail("ERROR:'Jobsite Id or Ship To' cannot be empty for Jobsite ID " ++ (vars.vHeaderContract.ContractNumber default "")) else (vars.vHeaderContract.ContractNumber),
+  company_external_id: if(isEmpty(vars.vHeaderContract.CustomerAccountNumber)) fail("ERROR:'Sold To' cannot be empty for Jobsite ID " ++ (vars.vHeaderContract.ContractNumber default "")) else (vars.vHeaderContract.CustomerAccountNumber),
+  name :  if(isEmpty(vName)) (vars.vHeaderContract.ContractNumber) else (vName),
+  description: vars.vHeaderContract.AddressLine1 default "-",
+     address: {
+        //line1:if(isEmpty(vars.vHeaderContract.ProjectName)) fail("ERROR: Project Name cannot be empty for Jobsite ID " ++ (vars.vHeaderContract.ContractNumber default "")) else (vars.vHeaderContract.ProjectName),
+        //line1:if(isEmpty(vLine1)) fail("ERROR: Project Name cannot be empty for Jobsite ID " ++ (vars.vHeaderContract.ContractNumber default "")) else vLine1,
+        //line2:vars.vHeaderContract.AddressLine1,
+        //line3:vars.vHeaderContract.AddressLine2,
+        //line4:vars.vHeaderContract.AddressLine3,
+        //line5:vars.vHeaderContract.SiteLocation,
+        line1:vars.vHeaderContract.AddressLine2 default "-",
+        line2:vars.vHeaderContract.AddressLine3,
+        line3:vars.vHeaderContract.AddressLine3,
+        line4:vars.vHeaderContract.SiteLocation,
+        zipcode:vars.vHeaderContract.Postcode,
+        city:vars.vHeaderContract.City,
+        county:vars.vHeaderContract.CountyDescription,
+        //country: p(countrycode),
+        country: vars.vHeaderContract.Country default "GB"
+        },
+//location:
+//  {
+//   lat:if((isEmpty(lat) or (lat == "0.00000"))) (null) else ({latitude: lat}) ,   lon:if((isEmpty(lon) or (lon == "0.00000"))) (null) else ({longitude: lon} ),
+// },
+range: null,
+expiration_date: vars.vHeaderContract.ExpiryDate default null,
+//shipping_plant_external_id:vars.vHeaderContract.BranchPlant,
+//description:vars.vHeaderContract.CustomerMixReference,
+//sales_group:paylaod.Contract.OrderCompany,
+associated_products: vars.vAssociatedProducts map { 
+ 
+
+     //external_id: if(($.external_id == "RMX ENP") or ($.external_id == "RMX ENC")) (Crypto::MD5($.external_id as Binary)) else ($.external_id),
+     //external_id: if(($.external_id == "RMX ENP") or ($.external_id == "RMX ENC")) (Crypto::MD5((upper($.ProductDescription) replace ' ' with '') as Binary)) else ($.external_id),
+     //external_id: (if(($.external_id == "RMX ENP") or ($.external_id == "RMX ENC")) (if(isEmpty($.description)) upper($.ProductDescription)  replace ' ' with '' else upper($.ProductDescription ++ $.description)   replace ' ' with '') else ($.external_id)) replace '/' with '',
+     //external_id: if(($.external_id == "RMX ENP") or ($.external_id == "RMX ENC")) (if(isEmpty($.description)) upper($.ProductDescription)  replace /[^a-z0-9A-Z]/ with "" else upper($.description ++ $.ProductDescription)   replace /[^a-z0-9A-Z]/ with "") else ($.description ++ $.external_id),
+     external_id: if(($.external_id == "RMX ENP") or ($.external_id == "RMX ENC")) (if(isEmpty($.description)) upper($.ProductDescription)  replace /[^a-z0-9A-Z]/ with "" else upper($.description ++ $.ProductDescription)   replace /[^a-z0-9A-Z]/ with "") else (($.description replace /[^a-z0-9A-Z]/ with "") ++ $.external_id ),
+     shipping_plant_external_id : if ($.shipping_plant_external_id != null or $.shipping_plant_external_id != "") ($.shipping_plant_external_id) else null,
+     //description : if ($.ProductDescription != null or $.ProductDescription != "") ($.ProductDescription) else null,
+     //customer_description : if ($.description != null or $.description != "") ($.description) else $.ProductDescription,
+     customer_description : $.description,
+     contract_line_number :$.contract_line_number as Number default $.contract_line_number ,
+     unit_price : $.unit_price,
+     //is_bid_work: "Need to updated in Mastersheet" ,
+     //pricing_plant_external_id: "Need to updated in Mastersheet" ,
+	 //sales_group: "Need to updated in Mastersheet" ,
+		 
+  },
+
+require_accounting_reference : true,
+default_accounting_reference: vars.vHeaderContract.CustomerPONumber,
+pricing_plant_external_id: vars.vAssociatedProducts[0].shipping_plant_external_id,
+sales_group: vars.vHeaderContract.OrderCompany,
+emails : if(vars.email_id == []) null else vars.email_id ,
+document_type : vars.vHeaderContract.DocumentType,
+site_contact_name : vars.vHeaderContract.SiteContactName,
+site_contact_phone : vars.vHeaderContract.SitePhoneNumber,
+is_minimix : if (vars.vHeaderContract.MinimixFlag == "N") false else true, 
+"latest_message_identifier":vars.messageIdentifier,
+//default_accounting_reference: "Need to be mapped"
+
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="6d93e38b-da10-4cb2-b279-73c1f9b0405e" message="+++ Jobsite Master Data :: #[payload] , Request_Id/Jobsite ID - #[vars.request_id], Line Number - #[vars.lineNumber],Sequence Number - #[vars.sequence_num],Contract Number- #[vars.external_id] , System Identifier is #[Mule::p('systemIdentifier')], Message Identifier is #[vars.messageIdentifier] successfully submitted +++" />
+		<flow-ref doc:name="RequestFlow" doc:id="3e880e39-7071-455c-80bf-3b6110ec7ca1" name="RequestFlow"/>
+		<logger level="INFO" doc:name="Logger" doc:id="fd40ca74-f51d-4b6b-8a1d-8934132249b0" message="#[payload]"/>
+		<logger level="INFO" doc:name="Logger" doc:id="0dafb826-3594-470c-b234-20f481174662" message="+++ Jobsite Master Data successfully submitted to API-2 :: Request_Id - #[vars.request_id] , Contract_id-#[vars.contract_id]  ++++++" />
+	</flow>
+</mule>

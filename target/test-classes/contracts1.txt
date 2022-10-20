@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="jdeuk-contractsdata-to-cd" doc:id="73dcda64-8bc5-4b07-bd37-2d1b13ac602b" >
+		<logger level="INFO" doc:name="Logger" doc:id="96169be3-5525-4293-8cca-809b136cd840" message="+++ Jobsite Master Data received for processing to API-2 +++" />
+		<ee:transform doc:name="MasterData fields to CD JSON Data" doc:id="b4523b46-17f4-4705-bb5d-78a2bb3f4dc0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.Contracts.*Contract]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="buisObj" ><![CDATA[%dw 2.0
+output application/java
+---
+"ContractMaster"]]></ee:set-variable>
+				<ee:set-variable variableName="vError" ><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<foreach doc:name="For Each" doc:id="ff7b1a09-9235-442e-bb97-2d0e65c0a163" collection="#[payload]">
+			<set-variable value="#[payload]" doc:name="Set Variable" doc:id="dbb79634-f7d9-440a-a900-50b52c525b7f" variableName="vContract" />
+			<choice doc:name="Choice" doc:id="8a8bd343-d084-4418-bd04-9de642fa929b" >
+				<when expression='#[!isEmpty(payload.ItemNumber) and payload.LineNumber &gt; 0]'>
+					<logger level="INFO" doc:name="Logger" doc:id="811b5913-5511-453a-89d9-1ae4ad1ac6c8" message='"+++ CD Item master received +++"'/>
+					<flow-ref doc:name="ItemMaster" doc:id="9ed7bf37-39d2-44ed-adfd-6ddd8743b20a" name="ItemMasterFlow" />
+					<set-payload value="#[vars.vContract]" doc:name="Set Payload" doc:id="a6145e5b-2589-4ae8-873f-20da5f92f838" />
+					<choice doc:name="Choice" doc:id="0f5ffd57-8d1f-4aaa-9113-7f84612c0ba1" >
+						<when expression='#[vars.vContract.LastStatus != "980" and vars.vContract.MessageType != "O"]'>
+							<logger level="INFO" doc:name="Logger" doc:id="4aa73bc2-3acd-4b99-b92a-65f31e59efb0" message="+++ CD Jobsite Master Received +++" />
+							<flow-ref doc:name="jobsitedata-to-cd" doc:id="06709486-fd3f-440f-a786-ff4debec9cd9" name="jdeuk-jobsitedata-to-cd"/>
+						</when>
+						<when expression='#[vars.vContract.LastStatus == "980" and vars.vContract.MessageType != "O"]'>
+							<flow-ref doc:name="jdeuk-jobsitedata-to-cd" doc:id="bf3d40c9-27ae-453b-9f71-c7db75c0c24b" name="jdeuk-jobsitedata-to-cd"/>
+						</when>
+						<otherwise >
+							<logger level="INFO" doc:name="Logger" doc:id="1d1601c0-4ae0-4af5-9cd2-fe0072d3efe0" message='" No Jobsite master is not found "' />
+							<logger level="INFO" doc:name="Logger" doc:id="833a728a-7499-4989-a7a5-c248f51efea8" message='#[%dw 2.0&#10;output application/json&#10;var vContract = payload&#10;---&#10;if((vContract.LastStatus == "980") and (vContract.MessageType == "O") == true)("+++ Jobsite Master with no related data was sent. MasterData Ignored +++") else ("+++ The MasterData send is not meant for Concrete Direct and is thus being ignored. +++")]' />
+						</otherwise>
+					</choice>
+				</when>
+				<otherwise >
+					<logger level="INFO" doc:name="Logger" doc:id="6b25154b-de33-4328-a719-1e7ab7075512" message='"NO ITEM MASTER FOUND TO CD TRANSFORM"'/>
+					<ee:transform doc:name="Transform Message" doc:id="43fbc3a8-3c17-4122-98e2-d10eb1450432" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+				</otherwise>
+			</choice>
+		</foreach>
+		<ee:transform doc:name="Transform Message" doc:id="bf8d977a-ab36-421b-a187-d2fc5e3f44dc">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+"status" : "success"]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="b1498de2-86fa-4fb5-bda2-1c300e774cf4" message="+++ Transformed Contract Master ---- #[payload] +++" />
+		<logger level="INFO" doc:name="Logger" doc:id="5225d140-0612-4a40-ba5b-6c5112e9021f" message="+++ Contracts Master Data successfully submitted  +++" />
+	</sub-flow>
+</mule>

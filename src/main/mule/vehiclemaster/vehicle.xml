@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="jdeuk-vehicledata-to-cd" doc:id="003a2304-515f-463e-8cc7-330a534b5f00" >
+		<logger level="INFO" doc:name="Logger" doc:id="dd5a4920-b37d-4934-ad2a-bea211310df5" message="+++ Vehicle Master Data received for processing to API-2 +++" />
+		<ee:transform doc:name="Setup Variables" doc:id="09f31444-39e4-426d-b792-baffc70b2850" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="buisObj" ><![CDATA[%dw 2.0
+output application/json
+---
+"VehicleMaster"]]></ee:set-variable>
+				<ee:set-variable variableName="request_id" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.Vehicle.SequenceNumber]]></ee:set-variable>
+				<ee:set-variable variableName="sourceSys" ><![CDATA[p('sourceSystem')]]></ee:set-variable>
+				<ee:set-variable variableName="external_Id" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.Vehicle.VehicleID
+]]></ee:set-variable>
+				<ee:set-variable variableName="active_flag" ><![CDATA[%dw 2.0
+output application/json
+---
+if(payload.Vehicle.ActiveFlag =='A') "available" else "inactive"
+     ]]></ee:set-variable>
+				<ee:set-variable variableName="sequence_num" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.Vehicle.SequenceNumber]]></ee:set-variable>
+				<ee:set-variable variableName="vehicle_id" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.Vehicle.VehicleID]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="MasterData fields to CD JSON Data" doc:id="5013d263-8200-4101-8214-c8fb0c434609" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/json skipNullOn = "everywhere"
+var vehicle_active_flag= payload.Vehicle.ActiveFlag 
+---
+{
+
+external_id: if (isEmpty(payload.Vehicle.VehicleID)) fail ("ERROR : Mandatory Field: 'Vehicle Id' cannot be empty.")
+              else trim(payload.Vehicle.VehicleID),
+home_plant_site_external_id: if (isEmpty(payload.Vehicle.WorksCode)) fail ("ERROR : Mandatory Field: 'WorksCode/home_plant_external_id' cannot be empty.")
+              else trim(payload.Vehicle.WorksCode),
+description:payload.Vehicle.VehicleType,
+status     : if (payload.Vehicle.MessageType =='O') ("inactive") else if(isEmpty(vehicle_active_flag  )) fail("ERROR:'Vehicle Active flag' cannot be empty for Truck No " ++ payload.Vehicle.VehicleID) 
+             else (if ((vehicle_active_flag=='A' ) or (payload.Vehicle.MessageType =='N')) ("available") else ("inactive")),
+max_load_size_cubic_meters : payload.Vehicle.CapacityM3,
+ai_address : payload.Vehicle.AIAddress as Number default payload.Vehicle.AIAddress ,
+ai_owner:payload.Vehicle.AIOwner ,
+latest_message_identifier: vars.messageIdentifier
+}
+
+
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="7215fc66-fe1d-4ce6-9511-e8158b1b1b52" message="#[payload]" />
+		<logger level="INFO" doc:name="Logger" doc:id="13e26bab-20e9-4448-9580-77433262c91e" message="+++ Transformed Vehicle Master ---- Request ID - #[vars.sequence_num], Vehicle Id - #[vars.external_id] , message_identifier- #[payload.latest_message_identifier],status- #[vars.active_flag]+++" />
+		<flow-ref doc:name="Flow Reference" doc:id="81ac19e0-e2ec-4110-bff1-c75e0dbf722d" name="RequestFlow" />
+		<logger level="INFO" doc:name="Logger" doc:id="6eddbbb4-9a00-41cc-a5c4-6794f686cb9f" message="#[payload]" />
+		<logger level="INFO" doc:name="Logger" doc:id="5c38b954-1cb9-4412-a037-939b5d539a1a" message="+++ Vehicle Master Data :: Request_Id - #[vars.request_id], VehicleId-#[vars.external_id]+++" />
+<!-- 		<error-handler ref="common-error-handler" /> -->
+	</flow>
+</mule>

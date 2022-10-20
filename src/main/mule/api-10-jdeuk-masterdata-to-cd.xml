@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:sqs="http://www.mulesoft.org/schema/mule/sqs" xmlns:cloudhub="http://www.mulesoft.org/schema/mule/cloudhub" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:spring="http://www.mulesoft.org/schema/mule/spring" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/spring http://www.mulesoft.org/schema/mule/spring/current/mule-spring.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/cloudhub http://www.mulesoft.org/schema/mule/cloudhub/current/mule-cloudhub.xsd
+http://www.mulesoft.org/schema/mule/sqs http://www.mulesoft.org/schema/mule/sqs/current/mule-sqs.xsd">
+	<flow name="api-10-jdeuk-masterdata-to-cd-main">
+        <http:listener path="/api/masterdata/*" config-ref="api-10-jdeuk-masterdata-to-cd-httpsListenerConfig">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+				<http:body ><![CDATA[#[output application/json
+---
+{
+  "status_message" : if (isEmpty(vars.errorDesc)) "Check Error Text below" else vars.errorDesc,
+  "status_code" : vars.errorStatus
+}]]]></http:body>
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        
+		<logger level="INFO" doc:name="Logger" doc:id="76302b03-721f-4cd3-b92f-c70db7ff374a" message="+++ API-10 Flow Started: Received BSSV  from JDE UK1 +++" />
+		<logger level="DEBUG" doc:name="Logger" doc:id="75cf2519-f6d6-4e2c-9946-da2a37e1cffe" message="+++ DEBUG : The bsfn payload received from JDE1 #[payload] +++" />
+		<http:basic-security-filter doc:name="Basic security filter" doc:id="338c9233-063b-481f-8421-fa640c96a16d" realm="MULE"/>
+		<spring:authorization-filter doc:name="Authorization filter" doc:id="5e963ed1-a0cb-4e74-b372-bc866050642e" requiredAuthorities="ROLE_ADMIN"/>
+		<logger level="INFO" doc:name="Logger" doc:id="b0462522-60b3-4ff0-a19b-4c90d6ef6f62" message="++++++++++ API-10 Flow Started++++++++++"/>
+		<logger level="INFO" doc:name="Logger" doc:id="5fe6a32b-0f3f-4e58-9c70-5f9ac31ba367" message="++++++++++ Before Base64 encoding: #[payload]++++++++++"/>
+		<ee:transform doc:name="Decoded from Base64 to visible readable format type" doc:id="2a882d77-9e38-4a62-aa00-1c62f899c02f">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output application/java
+
+---
+fromBase64(payload)]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="messageIdentifier" ><![CDATA[%dw 2.0
+output application/java
+---
+(now() >> "UTC") as Number]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-payload value="#[payload]" doc:name="To Set JAVA code into XML format" doc:id="48872e32-9d54-4374-979c-23889e9bd024" mimeType="text/plain" />
+		<ee:transform doc:name="replacement of parsed content" doc:id="2437a39e-7011-4114-9a61-63574351fcb7" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+
+var replacedAmpChar = payload replace  /[&]/ with "AND"
+var parsedContent = (read(replacedAmpChar,"application/xml"))
+
+---
+parsedContent]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="Y" doc:name="Setting success JDE process Flag" doc:id="94471cdf-c451-4b07-8182-688b513fc284" variableName="vStatus" />
+		<logger level="INFO" doc:name="Logger" doc:id="16019418-84d3-4049-ba14-dd8eacaf448e" message="+++ After Decoding to JSON :#[payload]+++"/>
+		<apikit:router config-ref="api-10-jdeuk-masterdata-to-cd-config"/>
+		<logger level="INFO" doc:name="Logger" doc:id="34d9a4a7-b4c4-403c-8dc0-0910c5beca66" message="++++++++++     Api-10 Flow Ended     ++++++++++"/>
+		<error-handler>
+            <on-error-propagate type="APIKIT:BAD_REQUEST">
+                <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Bad request"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED">
+                <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Method not allowed"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">405</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_ACCEPTABLE">
+                <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Not acceptable"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">406</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:UNSUPPORTED_MEDIA_TYPE">
+                <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Unsupported media type"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">415</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+            <on-error-propagate type="APIKIT:NOT_IMPLEMENTED">
+                <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{message: "Not Implemented"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">501</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="b0057c35-db36-44b3-ba91-16a530fd0393" type="HTTP:BASIC_AUTHENTICATION">
+				<logger level="INFO" doc:name="Logger" doc:id="efdac4aa-d967-4794-9e3e-51fbdf770f02" message='+++"Basic Authentication"+++'/>
+				<ee:transform doc:name="Transform Message" doc:id="c41f7af8-c65a-404c-95e2-bcd17ec452b2" >
+					<ee:message >
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="errorStatus" ><![CDATA[401]]></ee:set-variable>
+						<ee:set-variable variableName="httpStatus" ><![CDATA[401]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Flow Reference" doc:id="fb905232-8514-4424-a2c7-ad2a0cddf9f8" name="api-error-flow"/>
+			</on-error-propagate>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="6abdd26b-29cc-4da4-8427-767fc31ef4fd" when="#[error.description contains 'Unable to transform String to Base 64 Binary']">
+				<logger level="INFO" doc:name="Logger" doc:id="d88a6c5b-aef3-44fa-9489-883b23561e26" />
+				<ee:transform doc:name="Transform Message" doc:id="0dd741c6-dcd2-4525-bcfb-102700925b3c" >
+					<ee:message />
+					<ee:variables >
+						<ee:set-variable variableName="errorStatus" ><![CDATA[500]]></ee:set-variable>
+						<ee:set-variable variableName="httpStatus" ><![CDATA[500]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<flow-ref doc:name="Flow Reference" doc:id="629dc80e-f532-44c4-88a7-03cafb28095b" name="api-error-flow" />
+			</on-error-propagate>
+        </error-handler>
+    </flow>
+    <!-- <flow name="api-2-common-cd-gateway-console">
+        <http:listener path="/console/*" config-ref="api-2_HTTP_Listener_config">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="api-2-common-cd-gateway-v1-config"/>
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+-&#45;&#45;
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+        <logger level="INFO" doc:name="Logger" doc:id="33258fc9-a282-4b2a-a9ac-3fdccefe18ce" message="++++++++++ API-10 Flow Ended++++++++++"/>
+					
+    </flow>
+<!&#45;&#45;     <flow name="api-10-dev-jdeuk-masterdata-to-cd-console">
+        <http:listener path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:console config-ref="api-10-dev-jdeuk-masterdata-to-cd-config"/>
+        <error-handler>
+            <on-error-propagate type="APIKIT:NOT_FOUND">
+                <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+-&#45;&#45;
+{message: "Resource not found"}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+    </flow> -->
+    <flow name="put:\contracts:api-10-jdeuk-masterdata-to-cd-config">
+		<logger level="INFO" doc:name="Logger" doc:id="52307647-c662-40ce-9618-0d2952188c36" message='+++Contracts Masterdata Received for further processing+++'/>
+		<flow-ref doc:name="Flow Reference" doc:id="376ac77c-3cc9-494b-9f6d-298527f45ba5" name="jdeuk-contractsdata-to-cd"/>
+		<logger level="INFO" doc:name="Logger" doc:id="186c1969-c6ab-4b81-8c37-99c719c99cba" message="+++ Send JDE Process Flag +++" />
+		<flow-ref doc:name="Flow Reference" doc:id="01df9570-8f8f-42f1-ab0f-dccd1fe63266" name="sendProcessFlag" />
+		<error-handler ref="common-error-handler" />
+		
+<!-- 		<error-handler ref="common-error-handler" /> -->
+    </flow>
+    <flow name="put:\customer:api-10-jdeuk-masterdata-to-cd-config">
+		<logger level="INFO" doc:name="Logger" doc:id="b7eb4e04-9bf3-4c47-bda1-7916985f5a79" message='+++Customer Masterdata Received for further processing+++' />
+		<flow-ref doc:name="Flow Reference" doc:id="b7764b1b-f2c8-4d7b-807e-18dfec467d7a" name="jdeuk-customerdata-to-cd"/>
+		<logger level="INFO" doc:name="Logger" doc:id="3cd95311-fa7a-471a-8145-8bc93e3f5f89" message="+++ Send JDE Process Flag +++" />
+		<flow-ref doc:name="Flow Reference" doc:id="832958bc-e054-4c6f-b17c-66a32ade9676" name="sendProcessFlag" />
+		<error-handler ref="common-error-handler" />
+    </flow>
+    <flow name="put:\vehicle:api-10-jdeuk-masterdata-to-cd-config">
+		<logger level="INFO" doc:name="Logger" doc:id="695a3cea-4c1f-4dc3-baf3-7437c4c9f71a" message="+++Vehicle Masterdata Received for further processing+++"/>
+		<flow-ref doc:name="Flow Reference" doc:id="ca3cbb99-4679-48df-a97e-65b05051149f" name="jdeuk-vehicledata-to-cd"/>
+		<logger level="INFO" doc:name="Logger" doc:id="d9f06ce6-17ec-4624-a1fc-40d818869da9" message="+++ Send JDE Process Flag +++" />
+		<flow-ref doc:name="Flow Reference" doc:id="8c70f45d-2670-42b1-ab18-db15c68f5afa" name="sendProcessFlag" />
+		<error-handler ref="common-error-handler" />
+<!-- 		<error-handler ref="common-error-handler" /> -->
+    </flow>
+    <flow name="put:\jobsite:api-10-jdeuk-masterdata-to-cd-config" doc:id="a7f12eb7-f4f2-476a-8c98-ea602b64e267">
+		<logger level="INFO" doc:name="Logger" doc:id="48f9a23d-5392-448b-953d-84d1b07ebd6b" message="+++Jobsite Masterdata Received for further processing+++"/>
+		<flow-ref doc:name="Flow Reference" doc:id="471e85db-d1ea-4218-a6bb-5b76d0cf76b1" name="jdeuk-jobsitedata-to-cd"/>
+		<error-handler ref="common-error-handler" />
+    </flow>
+    <flow name="put:\items:api-10-jdeuk-masterdata-to-cd-config" doc:id="80799cff-607b-42e3-b6cc-33a7efbedfa1">
+		<logger level="INFO" doc:name="Logger" doc:id="c1294625-4892-4e3f-96ce-ad8bbe831875" message="+++Item Masterdata Received for further processing+++"/>
+		<flow-ref doc:name="Flow Reference" doc:id="c1f09730-2002-4005-a2a1-1ed265976bed" name="ItemMasterFlow"/>
+		<error-handler ref="common-error-handler" />
+    </flow>
+	<sub-flow name="api-error-flow" doc:id="1396671d-19d1-4ad1-835f-615aef5fb28e" >
+		<logger level="INFO" doc:name="Logger" doc:id="e57cf02f-dd74-4ce5-a379-f8810affc0b1" message="+++Error Propogate Authentication and Base64 errors Segment+++ #[error.description]" />
+			<logger level="INFO" doc:name="Logger" doc:id="01d6789a-51aa-43b2-82ab-b5ed79a12173" message="+++ Metadata -  #[payload] +++" />
+			<ee:transform doc:name="Message" doc:id="ebbe1bf0-7a21-4ec8-bbfb-176c2749d8fc">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="status"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"statusCode" : '500',
+	"statusText" : "Error occur due to Binary Base64 file received from E1 input data."
+	
+	}]]></ee:set-variable>
+				<ee:set-variable variableName="errorStatus"><![CDATA[500]]></ee:set-variable>
+				<ee:set-variable variableName="errorDesc"><![CDATA[ %dw 2.0
+import * from dw::core::Strings
+output application/json
+---
+ (substring(error.description,0, 73) default "")]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="E" doc:name="Set JDE status flag to E (Error)" doc:id="07a1bc27-e3ca-4be8-9e9d-2882f73f7a94" variableName="vStatus" />
+			<logger level="INFO" doc:name="Send Error to JDE Process Flag Flow" doc:id="47708c58-2b99-4ab3-aac7-9c50bc0aa4f6" message="+++Send Error to JDE Process Flag Flow+++"/>
+			<flow-ref doc:name="Flow Reference" doc:id="9793ce2e-1f45-42da-a63d-72bfae10aa5c" name="sendProcessFlag" />
+			<set-payload value='#[%dw 2.0&#10;output application/java&#10;---&#10;"Mule API Technical Error " ++ ": Base64 Binary File error " ++ " received through E1 System."]' doc:name="Set Payload" doc:id="a40c1a9a-c9a8-4a56-b5a8-75747048bdf1" />
+		<logger level="INFO" doc:name="Logger" doc:id="6e8000c3-9ba4-46fc-9dfd-143508a3a234" message="+++ #[payload] +++" />
+			<cloudhub:create-notification domain="${secure::cloudhub.domain}" doc:name="Create Notification" doc:id="c7bfa229-6b82-408e-9a09-be4a789a0e57" config-ref="CloudHub_Config" priority="INFO"/>
+	</sub-flow>
+</mule>

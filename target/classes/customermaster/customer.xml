@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="jdeuk-customerdata-to-cd" doc:id="58ade3d0-83c2-4b3e-8ed7-3b682233526a" >
+		<logger level="INFO" doc:name="Logger" doc:id="1c4dc201-5149-4717-baa0-48839bb4248e" message="+++ Customer Master Data received for processing to API-2 +++" />
+		<ee:transform doc:name="Setup variables" doc:id="1a15d4cb-9da3-4f67-b0a1-32d4163559d7">
+			<ee:message>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="buisObj"><![CDATA[%dw 2.0
+output application/java
+---
+"CustomerMaster"]]></ee:set-variable>
+				<ee:set-variable variableName="request_id"><![CDATA[%dw 2.0
+output application/java
+---
+payload.Customer.SequenceNumber]]></ee:set-variable>
+				<ee:set-variable variableName="sequence_num"><![CDATA[%dw 2.0
+output application/json
+---
+payload.Customer.SequenceNumber]]></ee:set-variable>
+				<ee:set-variable variableName="sourceSys"><![CDATA[p('sourceSystem')]]></ee:set-variable>
+				<ee:set-variable variableName="customer_id" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.Customer.AddressNumber]]></ee:set-variable>
+				<ee:set-variable variableName="address_num" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.Customer.AddressNumber]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="MasterData fields to CD JSON Data" doc:id="e6280358-c331-4226-81f0-39772dab34e7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::Runtime
+output application/json skipNullOn = "everywhere"
+//var countrycode =if(payload.Customer.Country !=null) payload.Customer.Country else "United Kingdom"
+var countrycode =if(payload.Customer.Country !=null) payload.Customer.Country else "GB"
+var vPOFormat = (trim(payload.Customer.CustomerPOFormat) splitBy  (" ") distinctBy $)
+---
+{
+
+//id:if(payload.Customer.MessageType == 'N') 'NEW RECORD' else if(payload.Customer.MessageType == 'A') 'AMENDED' else 'vehicle master record has been deleted from E1' ,
+name: if(isEmpty(payload.Customer.Name)) fail("ERROR: Mandatory field: 'Customer Name' cannot be empty")
+	  else (payload.Customer.Name),
+external_id: if(isEmpty(payload.Customer.AddressNumber)) fail("ERROR: Mandatory field: 'Customer Id or Address Number' cannot be empty")
+	  else (payload.Customer.AddressNumber),
+credit_status:if((payload.Customer.CreditMessage =='NP') or (payload.Customer.CreditMessage =='LA') or (payload.Customer.CreditMessage =='LC')) 'on_hold' else 'ok' ,
+//system_id: "UK1",
+address: {
+	
+//	line1:if(isEmpty(payload.Customer.AddressLine1)) fail("ERROR: Mandatory field: 'Address Line 1' cannot be empty")
+//		  else (payload.Customer.AddressLine1) replace /[\:\,\-\,\/]/ with "",
+	line1: (payload.Customer.AddressLine1) replace /[\:\,\-\,\/]/ with "" default "-",
+	line2: payload.Customer.AddressLine2,
+	line3: payload.Customer.AddressLine3,
+	line4: payload.Customer.AddressLine4,
+	city: payload.Customer.City,
+	state: payload.Customer.County,
+	zipcode: payload.Customer.Postcode,
+	//country: p(countrycode)
+	//country: countrycode
+	country: payload.Customer.Country default "GB"
+    },
+
+email: payload.Customer.Email splitBy  " ",
+latest_message_identifier: vars.messageIdentifier,
+//purchase_order_formats: payload.Customer.CustomerPOFormat splitBy  (" ") ,
+purchase_order_formats: vPOFormat,
+
+}
+
+
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+			</ee:variables>
+		
+</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="275bd1c3-fcdd-402b-a9cf-0f0a1a418ce0" message="#[payload]" />
+		<logger level="INFO" doc:name="Logger" doc:id="e8eb870a-4b71-4b8e-be74-a51a9de28f10" message="+++ Transformed Customer Master data ---- Customer Id - #[vars.customer_id] , Sequencenumber- #[vars.sequence_num], Request ID- #[vars.request_id], Message Identifier - #[payload.latest_message_identifier] , System Identifier is #[Mule::p('systemIdentifier')] +++" />
+		<flow-ref doc:name="Flow Reference" doc:id="a67c8676-4d8d-4ac6-a50f-609fc59b58ea" name="RequestFlow" />
+		<logger level="INFO" doc:name="Logger" doc:id="a80f59a5-4fd9-49f0-8410-dcb3114abf2d" message="#[payload]" />
+		<logger level="INFO" doc:name="Logger" doc:id="66f0ffe1-3bb8-4f91-a832-469b84fc0d01" message="+++ Customer Master Data :: Request_Id - #[vars.request_id], CustomerId-#[vars.customer_id] successfully submitted +++" />
+		<logger level="INFO" doc:name="Logger" doc:id="13aad5d9-a51a-4d6d-9545-be4fef97c00f" message="+++ Customer Master Data successfully submitted  +++" />
+<!-- 		<error-handler ref="common-error-handler" /> -->
+	</flow> 
+
+</mule>

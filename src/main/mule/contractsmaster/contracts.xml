@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:cloudhub="http://www.mulesoft.org/schema/mule/cloudhub" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/cloudhub http://www.mulesoft.org/schema/mule/cloudhub/current/mule-cloudhub.xsd">
+	<flow name="jdeuk-contractsdata-to-cd" doc:id="9135ff48-747e-4933-96ea-4c20c80d465a" >
+		<logger level="INFO" doc:name="Logger" doc:id="96ad6d26-4d1a-474f-a095-cb4b9bf122ba" message="+++ Item and Jobsite Master Data received for processing to API-2 +++" />
+		<ee:transform doc:name="MasterData fields to CD JSON Data" doc:id="4347ca0e-fd54-460f-88e1-b0a6300f75a5">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.Contracts.*Contract]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="buisObj" ><![CDATA[%dw 2.0
+output application/java
+---
+"ContractMaster"]]></ee:set-variable>
+				<ee:set-variable variableName="vError" ><![CDATA[%dw 2.0
+output application/java
+---
+[]]]></ee:set-variable>
+				<ee:set-variable variableName="vContractHeader" ><![CDATA[%dw 2.0
+output application/json
+---
+payload.Contracts.*Contract]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="#[[]]" doc:name="vAssociatedProducts" doc:id="6f85659c-c374-4f3b-bb83-6018c1700bf4" variableName="vAssociatedProducts"/>
+		
+			
+				<foreach doc:name="For Each" doc:id="4e22ccdc-c880-4b26-bfdb-d9bb12b9d6ac" collection="#[payload]">
+				<try doc:name="Try" doc:id="52a9744c-7e97-48d7-86e6-865c1e1bf140" >
+					<choice doc:name="Choice" doc:id="17b4314e-612c-4cac-bcd3-5751d170659c">
+				<when expression="#[payload.HeaderDetail =='D']">
+					<choice doc:name="Choice" doc:id="f9ab03be-7737-4364-803d-7528faea60af">
+						<when expression='#[!isEmpty(payload.ItemNumber) and !(payload.ItemNumber == "null") and payload.LineNumber &gt; 0]'>
+							<logger level="INFO" doc:name="Logger" doc:id="9624a8ff-2400-4b15-8c35-cdb79b55639d" message="+++Enter into Item master , Item number #[payload.ItemNumber]+++" />
+							<ee:transform doc:name="Approved_Products" doc:id="78e23f65-f64c-43d4-b3a8-8b2520f9d964">
+							<ee:message />
+							<ee:variables>
+								<ee:set-variable variableName="vAssociatedProducts"><![CDATA[%dw 2.0
+output application/json 
+---
+if (!(payload.LastStatus == "980" or payload.LastStatus == "526" or payload.LastStatus == "534"))
+(vars.vAssociatedProducts ++ [{
+//external_id:payload.ItemNumber replace /[^-a-z0-9A-Z]/ with "_",
+external_id:if((payload.ItemNumber == "RMX ENP") or (payload.ItemNumber == "RMX ENC"))(payload.ItemNumber) else (trim(payload.ItemNumber) replace /[^-a-z0-9A-Z]/ with "_"),
+ProductDescription:payload.ProductDescription,
+shipping_plant_external_id:payload.WorksCode,
+description:payload.CustomerMixReference default "",
+contract_line_number :payload.LineNumber,
+unit_price :payload.UnitPrice,
+//is_minimix : payload.MinimixFlag 
+//ContractNumber:payload.ContractNumber,
+//HeaderDetail:payload.HeaderDetail,
+//LastStatus: payload.LastStatus
+} ]  ) else vars.vAssociatedProducts]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+								<logger level="INFO" doc:name="Logger" doc:id="2110681c-1b0d-45ae-97d7-4923793ecc54" message="#[vars.vAssociatedProducts]"/>
+								<flow-ref doc:name="Flow Reference" doc:id="498199c8-4f4a-4406-9d7d-e154333feda3" name="ItemMasterFlow" />
+						
+</when>
+						<otherwise>
+							<logger level="INFO" doc:name="Logger" doc:id="78f26f1f-b890-4fa5-a553-7cef4fe64d21" message="+++ Item number is Null+++" />
+								<raise-error doc:name="Raise error" doc:id="48c361e7-83ec-4ce9-b0d4-ab3d71868f1a" type="ITEMMASTERDATA:INVALIDORNOITEM" description='ITEM NUMBER  IS EMPTY OR  E1 IS SEND THE REQUEST WITH NULL CHARACTERS IN ITEM FIELD'/>
+						
+</otherwise>
+					</choice>
+				</when>
+				<when expression="#[payload.HeaderDetail =='H']">
+					<logger level="INFO" doc:name="Logger" doc:id="42fd2fa9-b72a-42d0-81f9-76af6199fbcf" message="+++Enter into Jobsite master, Contractnumber - #[payload.ContractNumber]+++" />
+						<set-variable value="#[payload]" doc:name="vHeaderContract" doc:id="ebfd7e0e-6d7f-4072-9c29-e8d5d83ba287" variableName="vHeaderContract"/>
+						<logger level="INFO" doc:name="Logger" doc:id="ab5de539-52c3-4a1b-bda0-b17455723ff5" message="#[vars.vHeaderContract]"/>
+					<!-- <ee:transform doc:name="Assoicated_Products" doc:id="30e25ef8-2e95-4af1-9a09-746d8c605a1f">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="vAssociated"><![CDATA[vars.vAssociatedProducts  filter $.ContractNumber==payload.ContractNumber and $.HeaderDetail !="H"]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform> -->
+				
+</when>
+				<otherwise>
+					<logger level="INFO" doc:name="Logger" doc:id="463efe40-8966-40a3-b262-25db472bb6dd" message='"+++ Transforming into jobsite after Item master data processing into CD+++"' />
+				</otherwise>
+			</choice>
+				
+				</try>
+		
+</foreach>
+		<logger level="INFO" doc:name="Logger" doc:id="ed3a5f06-ffdc-4de1-882c-161f910902ff" message="+++ All Item Master Data successfully submitted. Now processing the Jobsite Master.  +++" />
+			<flow-ref doc:name="Jobsite master" doc:id="7b2f90ac-31ac-4768-8f8d-8630d473d864" name="jdeuk-jobsitedata-to-cd" />
+		<logger level="INFO" doc:name="Logger" doc:id="18b794af-a8e7-4539-887a-55b747c54b2e" message="+++ Transformed Contract Master ---- #[payload] +++" />
+		<logger level="INFO" doc:name="Logger" doc:id="61058dfc-fce4-4560-b596-aec3688b84e3" message="+++ Item Master Data :: Request_Id - #[vars.request_id],Sequence number - #[vars.sequence_num] ,Item number- #[vars.external_id]  +++" />
+<!-- 		<error-handler ref="common-error-handler" /> -->
+			
+	
+		
+	</flow>
+</mule>

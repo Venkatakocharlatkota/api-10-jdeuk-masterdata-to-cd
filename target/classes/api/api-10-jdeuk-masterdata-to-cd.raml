@@ -1,0 +1,46 @@
+#%RAML 1.0
+title: api-10-jdeuk-masterdata-to-cd
+description: "API to submit master data coming from UK region to Concrete Direct"
+
+version: 1.0.0
+protocols: [ HTTPS]
+mediaType: [ application/xml ]
+baseUri: /api/masterdata
+
+
+traits:
+  client-id-required:
+    headers:
+      client_id:
+        type: string
+      client_secret:
+        type: string
+    responses:
+      401:
+        description: Unauthorized or invalid client application credentials
+      500:
+        description: Bad response from authorization server, or WSDL SOAP Fault error
+
+/vehicle:
+  put:
+    description: "Create or Update vehicle data and submit to Concrete Direct"
+
+/customer:
+  put:
+    description: "Create or Update customer data and submit to Concrete Direct."
+
+/contracts:
+  put:
+    description: "Create or Update contracts data and submit to Concrete Direct."
+
+/jobsite:
+  put:
+    description: "Create or Update jobsite data and submit to Concrete Direct."
+    
+/items:
+  put:
+    description: "Create or Update Items data and submit to Concrete Direct."
+
+
+            
+            

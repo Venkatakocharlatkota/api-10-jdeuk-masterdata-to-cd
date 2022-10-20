@@ -1,0 +1,26 @@
+{
+	"minMuleVersion": "4.4.0",
+	"secureProperties": ["mule.key" , "secure::cloudhub.env" ],
+	"classLoaderModelLoaderDescriptor": {
+		"id": "mule",
+		"attributes": {
+			"exportedResources": [
+				"JQA900/jdeinterop.ini",
+				"JQA900/jdbj.ini",
+				"JPY900/jdeinterop.ini",
+				"JPY900/jdbj.ini",
+				"JPY900/tnsnames.ora",
+				"JPD900/jdeinterop.ini",
+				"JPD900/jdbj.ini",
+				"JPD900/tnsnames.ora",
+				"jdelog.properties",
+				"log4j2.xml",
+				"jdelog.properties"
+			],
+			"exportedPackages": [
+				"JQA900", "JPY900", "JPD900"
+			],
+			"includeTestDependencies": "false"
+		}
+	}
+}
